@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = process.env.API_KEY || '';
+// 修改重點：改成 import.meta.env.VITE_GEMINI_API_KEY
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 const ai = new GoogleGenAI({ apiKey });
 
@@ -19,6 +20,7 @@ const parseBase64 = (dataUri: string) => {
 
 export const generateCharacterImage = async (outfitDescription: string, baseImageBase64?: string): Promise<string> => {
   if (!apiKey) {
+    console.error("API Key is missing! Check Vercel Environment Variables.");
     throw new Error("API Key is missing");
   }
 
