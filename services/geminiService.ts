@@ -1,62 +1,52 @@
-import { GoogleGenAI } from "@google/genai";
-
-// 這裡維持你設定好的環境變數
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
-
-const ai = new GoogleGenAI({ apiKey });
-
-// 改用最穩定的 1.5 Flash 模型 (保證不報錯)
-const MODEL_NAME = 'gemini-1.5-flash';
-
 /**
- * 預設的 Cyberpunk 圖片 (當無法生成時顯示這張)
- * 這樣網站就不會壞掉，你可以看到介面
+ * Pollinations AI Service (完全免費版)
+ * 使用 Pollinations.ai 的公開 API，無需 API Key
  */
-const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1605218427306-022248cebf77?q=80&w=2670&auto=format&fit=crop";
 
-const parseBase64 = (dataUri: string) => {
-  const matches = dataUri.match(/^data:(.+);base64,(.+)$/);
-  if (!matches || matches.length !== 3) {
-    return null;
-  }
-  return { mimeType: matches[1], data: matches[2] };
+// 輔助函式：把網路圖片轉成 Base64 格式 (因為你的網站需要這種格式)
+const imageUrlToBase64 = async (url: string): Promise<string> => {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 };
 
 export const generateCharacterImage = async (outfitDescription: string, baseImageBase64?: string): Promise<string> => {
-  if (!apiKey) {
-    console.error("API Key is missing! Check Vercel Environment Variables.");
-    return FALLBACK_IMAGE; // 如果沒鑰匙，直接回傳預設圖
-  }
+  
+  // 1. 準備提示詞 (Prompt)
+  // 我們把你的衣服描述加上 Cyberpunk 的關鍵字，確保畫風統一
+  const corePrompt = `
+    Best quality, masterpiece, 8k, photorealistic, cyberpunk style.
+    A beautiful young female cyberpunk character with long colorful hair.
+    Wearing: ${outfitDescription}.
+    Background: Neon lit cyberpunk city street, dark atmosphere, volumetric lighting.
+    Cybernetic implants, glowing skin lines, futuristic fashion.
+    (vertical aspect ratio), detailed face, cinematic shot.
+  `;
 
-  // 因為 1.5 Flash 不能畫圖，我們這裡做一個「假動作」
-  // 讓程式碼以為它在運作，但最後我們優雅地回傳預設圖，而不是讓網站當機
+  // 2. 隨機生成一個種子碼，確保每次按鈕按下去都有變化
+  const seed = Math.floor(Math.random() * 1000000);
+
+  // 3. 組合 Pollinations 的網址
+  // model=flux (目前免費中最強的模型)
+  // width/height 設定為直式人像
+  const encodedPrompt = encodeURIComponent(corePrompt);
+  const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=768&height=1024&seed=${seed}&model=flux&nologo=true`;
+
+  console.log("正在請求 Pollinations AI 生成圖片:", imageUrl);
+
   try {
-    const parts: any[] = [];
-    parts.push({ text: `Create a cyberpunk character description based on: ${outfitDescription}` });
-
-    // 我們還是呼叫一下 AI，確認連線是通的 (只是這次我們只要文字)
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: { parts: parts },
-    });
-
-    console.log("AI 連線成功，但此模型僅支援文字模式，切換至預設圖片展示。");
-    
-    // 檢查是否有圖片 (通常 1.5 Flash 不會有，所以會跳過這段)
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
-    }
-    
-    // 如果沒有生成圖片，我們就回傳這張帥氣的 Cyberpunk 預設圖
-    // 這樣你的網站就能正常運作了！
-    return FALLBACK_IMAGE;
+    // 4. 下載圖片並轉成你的網站看得懂的格式
+    const base64Image = await imageUrlToBase64(imageUrl);
+    return base64Image;
 
   } catch (error) {
-    console.error("AI Error (Safe Mode Active):", error);
-    // 就算真的出錯了（例如額度又不夠），我們也不要讓網站當機
-    // 直接回傳圖片，讓使用者體驗不中斷
-    return FALLBACK_IMAGE;
+    console.error("Pollinations 生成失敗:", error);
+    // 萬一真的失敗，回傳一張預設圖
+    return "https://images.unsplash.com/photo-1605218427306-022248cebf77?q=80&w=2670&auto=format&fit=crop";
   }
 };
